@@ -123,6 +123,22 @@ class MeshTest {
         assertNull(Identity.open(box, z.identity.xPriv, a.id.bytes)) // pogrešan ključ
         assertNull(Identity.open(box, b.identity.xPriv, z.id.bytes)) // pogrešan AAD (spoof src)
     }
+    @Test fun fuzzDecoderNeverThrows() {
+        val a = node("A"); val b = node("B")
+        val good = Frame.encode(a.signFrame(Frame(type = MsgType.DATA, messageId = ByteArray(16) { 3 },
+            src = a.id, dst = b.id, priority = Priority.NORMAL, ttl = 8, seq = 1, payload = "fuzz".toByteArray())))
+        val r = java.util.Random(1234)
+        var decoded = 0; var dropped = 0
+        repeat(2000) {
+            val m = good.copyOf()
+            repeat(1 + r.nextInt(4)) { m[r.nextInt(m.size)] = r.nextInt(256).toByte() } // 1-4 mutacije
+            val drops = mutableMapOf<String, Int>()
+            val f = Frame.decode(m, drops) // ne smije baciti
+            if (f == null) dropped++ else decoded++
+        }
+        assertTrue(dropped > 50, "validacija mora paliti (dropped=$dropped)")
+        assertEquals(2000, dropped + decoded) // sve klasifikovano, nijednom bačen izuzetak
+    }
     @Test fun noAndroidImports() {
         // strukturni gate: core-mesh ne smije referencirati android.* (provjera i u CI greppom)
         val src = java.io.File("src/main/kotlin").walkTopDown().filter { it.isFile }
