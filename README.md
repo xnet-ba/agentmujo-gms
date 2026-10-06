@@ -6,7 +6,7 @@
 <p><b>Bez interneta. Bez mobilne mreže. Bez Google servisa. Bez servera.</b></p>
 
 ![status](https://img.shields.io/badge/faza-4a%20od%209-yellowgreen)
-![test](https://img.shields.io/badge/testovi-35%2F35-brightgreen)
+![test](https://img.shields.io/badge/testovi-38%2F38-brightgreen)
 ![kotlin](https://img.shields.io/badge/kotlin-2.0.21-blue)
 ![gms](https://img.shields.io/badge/play--services-ne_treba-red)
 ![android](https://img.shields.io/badge/android--imports_u_core--mesh-0-green)
@@ -25,7 +25,7 @@ Ova verzija je temelj za kasniji <b>AgentMujoGMS OS</b>, zato je mesh logika <b>
 <summary><b>🧱 Arhitektura slojeva — klikni za tabelu</b></summary>
 <table>
 <tr><th>Sloj</th><th>Naziv</th><th>Status</th><th>Opis</th></tr>
-<tr><td>7</td><td>Servisi (chat, SOS, mapa, PTT, fajlovi)</td><td>⏳ Faza 6–7</td><td>Nikad ne pričaju direktno s transportom</td></tr>
+<tr><td>7</td><td>Servisi (chat, SOS, mapa, PTT, fajlovi)</td><td>🔶 chat+SOS jezgro (PC)</td><td>Grupni chat + SOS sa potvrdama i ponavljanjem; Android UI kasnije; nikad direktno na transport</td></tr>
 <tr><td>6</td><td>Network API (bound service, AIDL)</td><td>⏳ Faza 6</td><td>Jedina tačka pristupa mreži za servise</td></tr>
 <tr><td>5</td><td>Role manager + Capability Probe</td><td>🔶 model gotov</td><td>Uloge: Coordinator, Relay, Messenger, GPS, Gateway, Storage, Voice</td></tr>
 <tr><td>4</td><td>Security / Identity</td><td>✅ Faza 3</td><td>Ed25519 potpis, E2E box, replay vrata — pure-JDK, bez servera</td></tr>
@@ -58,6 +58,7 @@ Ova verzija je temelj za kasniji <b>AgentMujoGMS OS</b>, zato je mesh logika <b>
 <tr><th>Komanda</th><th>Opseg</th><th>Rezultat</th></tr>
 <tr><td><code>gradle :core-mesh:test</code></td><td>11 JUnit: codec, dedup, rate-limit, potpis/tamper, seal/open, lease, android-import gate</td><td>✅ 11/11</td></tr>
 <tr><td><code>gradle :transport-api:test</code></td><td>5 JUnit: loopback send/receive, probe modeli, izbor transporta po klasi saobraćaja, fallback, android-import gate</td><td>✅ 5/5</td></tr>
+<tr><td><code>gradle :service-chat:test</code></td><td>3 JUnit: grupni chat, SOS potvrde, SOS odustajanje nakon 10 pokušaja</td><td>✅ 3/3</td></tr>
 <tr><td><code>gradle :sim:run</code></td><td>19 determinističkih scenarija (seedovi 11–108)</td><td>✅ 19/19</td></tr>
 </table>
 <p>Simulator pokriva: nestanak relaya, partition/merge (0 duplikata, 0 gubitaka), SOS preempciju (4 ticka),

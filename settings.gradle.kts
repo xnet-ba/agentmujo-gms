@@ -1,2 +1,2 @@
 rootProject.name = "agentmujo-gms"
-include(":core-mesh", ":transport-api", ":sim")
+include(":core-mesh", ":transport-api", ":service-chat", ":sim")
