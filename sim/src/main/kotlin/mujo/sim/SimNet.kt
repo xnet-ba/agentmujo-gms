@@ -18,7 +18,9 @@ class SimNet(seed: Long) {
     val quiet = mutableSetOf<String>() // veze ostaju, čvor ne ticka/ne prima (utišani relay za timeout test)
 
     fun addNode(name: String): MeshNode {
-        val n = MeshNode(NodeId.fromName(name), rng = Random(rng.nextLong()))
+        val seed = java.security.MessageDigest.getInstance("SHA-256").digest(("mujo-id:" + name).toByteArray())
+        val ident = Identity.deterministic(seed)
+        val n = MeshNode(ident.nodeId(), identity = ident, rng = Random(rng.nextLong()))
         nodes[name] = n; return n
     }
     fun link(a: String, b: String, loss: Double = 0.0, latency: Int = 1) {

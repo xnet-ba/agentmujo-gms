@@ -70,26 +70,28 @@ private fun storm() {
     check("storm/no-reflood", !overRelay, "")
 }
 
-/** 5. Idempotentnost: ista sirova kopija 2x → aplikaciji 1x. */
+/** 5. Idempotentnost: ista sirova kopija 3x → aplikaciji 1x. */
 private fun idem() {
     val s = SimNet(55); listOf("A", "B").forEach { s.addNode(it) }; s.link("A", "B")
     val a = s.nodes["A"]!!; val b = s.nodes["B"]!!
     a.sendUnicast(s.idOf("B"), "once".toByteArray(), ackReq = false)
     s.run(10)
-    val raw = Frame.encode(Frame(type = MsgType.DATA, messageId = ByteArray(16) { 7 }, src = a.id,
-        dst = b.id, priority = Priority.NORMAL, ttl = 16, payload = "dup".toByteArray()))
-    b.receive(raw, a.id, 100); b.receive(raw, a.id, 101)
+    val raw = Frame.encode(a.signFrame(Frame(type = MsgType.DATA, messageId = ByteArray(16) { 7 }, src = a.id,
+        dst = b.id, priority = Priority.NORMAL, ttl = 16, seq = 50, payload = "dup".toByteArray())))
+    b.receive(raw, a.id, 100); b.receive(raw, a.id, 101); b.receive(raw, a.id, 102)
     check("idem/once", b.delivered.count { String(it.payload) == "dup" } == 1, "")
 }
 
-/** 6. Codec roundtrip + drop pravila (ver/tip/skraćeno). */
+/** 6. Codec roundtrip + drop pravila (ver/tip/skraćeno/nepotpisan). */
 private fun codec() {
-    val f = Frame(type = MsgType.DATA, messageId = ByteArray(16) { 1 }, src = mujo.mesh.NodeId.fromName("X"),
-        dst = mujo.mesh.NodeId.fromName("Y"), priority = Priority.URGENT, ttl = 9, payload = "abc".toByteArray())
+    val s = SimNet(56); listOf("X", "Y").forEach { s.addNode(it) }
+    val x = s.nodes["X"]!!; val y = s.nodes["Y"]!!
+    val f = x.signFrame(Frame(type = MsgType.DATA, messageId = ByteArray(16) { 1 }, src = x.id,
+        dst = y.id, priority = Priority.URGENT, ttl = 9, seq = 3, payload = "abc".toByteArray()))
     val rt = Frame.decode(Frame.encode(f))
     val bad1 = Frame.decode(byteArrayOf(9, 1, 2)) // kratak
     val good = Frame.encode(f).copyOf().also { it[0] = 99 } // pogrešan ver
-    check("codec/roundtrip", rt != null && String(rt.payload) == "abc" && rt.ttl == 9, "")
+    check("codec/roundtrip", rt != null && String(rt.payload) == "abc" && rt.ttl == 9 && rt.seq == 3, "")
     check("codec/drops", bad1 == null && Frame.decode(good) == null, "")
 }
 
@@ -117,6 +119,7 @@ private fun scale() {
 fun main() {
     relayFail(); partitionMerge(); sosPreempt(); storm(); idem(); codec(); scale()
     coordKill(); partitionMergeCoord(); recoveryTime(); batteryGate(); batteryPrefer()
+    e2eChat(); spoofDrop(); replayDrop()
     println(if (failures == 0) "ALL PASS" else "$failures FAILURES")
     kotlin.system.exitProcess(if (failures == 0) 0 else 1)
 }
@@ -197,6 +200,56 @@ private fun batteryGate() {
         "bulk=$bulkGot sos=$sosGot skips=${b.drops["battery-skip"]}")
 }
 
+/** Faza 3: E2E unicast kroz relay — primalac čita plaintext, relay ne može. */
+private fun e2eChat() {
+    val s = SimNet(106); listOf("A", "B", "C").forEach { s.addNode(it) }
+    s.link("A", "B"); s.link("B", "C")
+    val a = s.nodes["A"]!!; val b = s.nodes["B"]!!; val c = s.nodes["C"]!!
+    c.broadcast("beacon".toByteArray()); s.run(30) // otkrivanje ključeva kroz overheard saobraćaj
+    a.sendUnicast(s.idOf("C"), "tajna".toByteArray()) // e2e po defaultu
+    s.run(80)
+    val plain = c.delivered.filter { String(it.payload) == "tajna" }
+    val leak = b.delivered.any { try { String(it.payload) == "tajna" } catch (_: Exception) { false } }
+    check("e2e/chat", plain.size == 1 && !leak && (a.drops["no-e2e-key"] ?: 0) == 0,
+        "plain=${plain.size} leak=$leak noKey=${a.drops["no-e2e-key"]}")
+}
+
+/** Faza 3: spoofing (tuđi ključ / tuđi potpis) umire na prvom hopu. */
+private fun spoofDrop() {
+    val s = SimNet(107); listOf("A", "B").forEach { s.addNode(it) }; s.link("A", "B")
+    val a = s.nodes["A"]!!; val b = s.nodes["B"]!!
+    val z = mujo.mesh.Identity.deterministic(ByteArray(32) { 9 })
+    // lažni ključ uz A-ov id
+    val f1 = Frame(type = MsgType.DATA, messageId = Frame.randomId(s.rng), src = a.id, dst = b.id,
+        priority = Priority.NORMAL, ttl = 16, seq = 99, edPub = z.edPubBytes, xPub = z.xPubBytes, payload = "laz".toByteArray())
+    val f1s = f1.copy(sig = z.sign(Frame.signBytes(f1)))
+    b.receive(Frame.encode(f1s), a.id, 50)
+    // A-ov ključ ali Z-ov potpis
+    val f2 = a.signFrame(Frame(type = MsgType.DATA, messageId = Frame.randomId(s.rng), src = a.id, dst = b.id,
+        priority = Priority.NORMAL, ttl = 16, seq = 100, payload = "laz2".toByteArray()))
+    val f2s = f2.copy(sig = z.sign(Frame.signBytes(f2.copy(sig = ByteArray(0)))))
+    b.receive(Frame.encode(f2s), a.id, 51)
+    check("spoof/drop", b.delivered.isEmpty() && (b.drops["id-spoof"] ?: 0) == 1 && (b.drops["bad-sig"] ?: 0) == 1,
+        "drops=${b.drops}")
+}
+
+/** Faza 3: replay starog seq-a se dropa, reorder unutar prozora (8) prolazi. */
+private fun replayDrop() {
+    val s = SimNet(108); listOf("A", "B").forEach { s.addNode(it) }; s.link("A", "B")
+    val a = s.nodes["A"]!!; val b = s.nodes["B"]!!
+    repeat(10) { a.sendUnicast(s.idOf("B"), "m$it".toByteArray()) }
+    s.run(60) // B.lastSeq[A] = 10
+    fun craft(seq: Int, tag: String): ByteArray {
+        val f = a.signFrame(Frame(type = MsgType.DATA, messageId = Frame.randomId(s.rng), src = a.id,
+            dst = b.id, priority = Priority.NORMAL, ttl = 16, seq = seq, payload = tag.toByteArray()))
+        return Frame.encode(f)
+    }
+    b.receive(craft(1, "m1-again"), a.id, 200) // star (1 <= 10-8) → replay
+    b.receive(craft(9, "m9-late"), a.id, 201)  // unutar prozora → primljen (reorder tolerancija)
+    check("replay/drop", b.delivered.none { String(it.payload) == "m1-again" } &&
+        b.delivered.any { String(it.payload) == "m9-late" } && (b.drops["replay"] ?: 0) == 1,
+        "drops=${b.drops}")
+}
 /** Faza 2: greedy min-cost — A bira C (90%) preko B (10%) za rutu do D. */
 private fun batteryPrefer() {
     val s = SimNet(105); listOf("A", "B", "C", "D").forEach { s.addNode(it) }

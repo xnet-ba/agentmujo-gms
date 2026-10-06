@@ -13,6 +13,7 @@ private data class Nbr(var lastSeen: Long, var battery: Int, var noRelay: Boolea
  */
 class MeshNode(
     val id: NodeId,
+    val identity: Identity, // Faza 3: obavezan; nodeId MORA = sha256(edPub)
     val isGroupMember: (NodeId) -> Boolean = { false },
     private val rng: java.util.Random = java.util.Random(),
     private val storeQuota: Int = 64,
@@ -38,6 +39,18 @@ class MeshNode(
     private val nbrInfo = mutableMapOf<String, Nbr>()
     private var lastHelloSent = Long.MIN_VALUE / 2
     private var ownSeq = 0 // seq mog leasea dok sam koordinator; sljedbenici ga samo prenose
+    private var msgSeq = 0 // Faza 3: moj monoton seq (svi originated frameovi)
+    private val lastSeq = mutableMapOf<String, Int>() // srcHex -> najveći viđeni seq (replay prozor 8)
+    private val pubDir = mutableMapOf<String, Pair<ByteArray, ByteArray>>() // srcHex -> (ed,x) sirovi ključevi
+    private val rxCount = mutableMapOf<String, Int>() // DoS budget: frameova po susjedu po ticku (max 64)
+
+    init { require(id == identity.nodeId()) { "nodeId mora biti sha256(edPub)" } }
+
+    /** Potpiši frame: veže ključeve + seq mora biti već postavljen. Javno za testove. */
+    fun signFrame(f: Frame): Frame {
+        val withKeys = f.copy(edPub = identity.edPubBytes, xPub = identity.xPubBytes)
+        return withKeys.copy(sig = identity.sign(Frame.signBytes(withKeys)))
+    }
 
     private val seen = LinkedHashSet<String>()      // dedup ključevi (srcHex+idHex)
     private val queues = Array(4) { ArrayDeque<Queued>() } // indeks = prio.code
@@ -81,17 +94,27 @@ class MeshNode(
     }
 
     // ---- API za aplikaciju ----
-    fun sendUnicast(dst: NodeId, payload: ByteArray, prio: Priority = Priority.NORMAL, ackReq: Boolean = true) {
-        val f = Frame(type = MsgType.DATA, messageId = Frame.randomId(rng), src = id, dst = dst,
-            priority = prio, ttl = 16, timestampMs = now,
-            flags = if (ackReq) Frame.FLAG_ACK_REQ else 0, payload = payload)
+    fun sendUnicast(dst: NodeId, payload: ByteArray, prio: Priority = Priority.NORMAL, ackReq: Boolean = true, e2e: Boolean = true) {
+        var flags = if (ackReq) Frame.FLAG_ACK_REQ else 0
+        var body = payload
+        if (e2e) { // E2E box primaocu ako mu znamo ključ, inače plaintext + brojač (dostupnost prije povjerljivosti)
+            val xraw = pubDir[hex(dst)]?.second
+            val xpub = xraw?.let { Identity.parseXPub(it) }
+            if (xpub != null) {
+                body = Identity.seal(payload, xpub, id.bytes, rng)
+                flags = flags or Frame.FLAG_SEALED
+            } else drops["no-e2e-key"] = (drops["no-e2e-key"] ?: 0) + 1
+        }
+        val f = signFrame(Frame(type = MsgType.DATA, messageId = Frame.randomId(rng), src = id, dst = dst,
+            priority = prio, ttl = 16, timestampMs = now, seq = ++msgSeq,
+            flags = flags, payload = body))
         enqueue(f, routes[hex(dst)]?.next)
     }
 
     fun broadcast(payload: ByteArray, sos: Boolean = false) {
-        val f = Frame(type = if (sos) MsgType.SOS else MsgType.FLOOD, messageId = Frame.randomId(rng),
+        val f = signFrame(Frame(type = if (sos) MsgType.SOS else MsgType.FLOOD, messageId = Frame.randomId(rng),
             src = id, dst = NodeId.BROADCAST, priority = if (sos) Priority.SOS else Priority.NORMAL,
-            ttl = 16, timestampMs = now, payload = payload)
+            ttl = 16, timestampMs = now, seq = ++msgSeq, payload = payload))
         markSeen(key(f.src, f.messageId)); delivered.add(f) // vlastiti broadcast se i meni isporučuje 1x
         enqueue(f, null)
     }
@@ -115,7 +138,31 @@ class MeshNode(
     fun receive(raw: ByteArray, from: NodeId, at: Long): List<Tx> {
         now = at
         val out = mutableListOf<Tx>()
+        val fromHex = hex(from) // DoS budget prije dekodiranja
+        val rc = (rxCount[fromHex] ?: 0) + 1; rxCount[fromHex] = rc
+        if (rc > 64) { drops["rx-flood"] = (drops["rx-flood"] ?: 0) + 1; return out }
         val f = Frame.decode(raw, drops) ?: return out
+        // Faza 3 vrata: (1) vezanost nodeId=sha256(edPub), (2) potpis, (3) kontinuitet ključa, (4) replay seq.
+        val srcHex = hex(f.src)
+        if (!java.security.MessageDigest.getInstance("SHA-256").digest(f.edPub).contentEquals(f.src.bytes)) {
+            drops["id-spoof"] = (drops["id-spoof"] ?: 0) + 1; return out
+        }
+        val edPub = Identity.parseEdPub(f.edPub) ?: run { drops["bad-key"] = (drops["bad-key"] ?: 0) + 1; return out }
+        if (!Identity.verify(edPub, Frame.signBytes(f), f.sig)) { drops["bad-sig"] = (drops["bad-sig"] ?: 0) + 1; return out }
+        val known = pubDir[srcHex]
+        if (known != null && !known.first.contentEquals(f.edPub)) {
+            drops["key-change"] = (drops["key-change"] ?: 0) + 1; return out // rotacija ključa traži uparivanje (kasnija faza)
+        }
+        if (known == null) pubDir[srcHex] = f.edPub to f.xPub
+        // Bug #10: zajednički msgSeq za HELLO i DATA — hello bi digao lastSeq pa legitimni
+        // DATA pao kao "replay". Seq vrata samo za sadržaj; HELLO/ACK imaju vlastitu
+        // idempotenciju (coordSeq / pending-potrošnja) pa su izuzeti.
+        if (f.type == MsgType.DATA || f.type == MsgType.FLOOD || f.type == MsgType.SOS) {
+            val last = lastSeq[srcHex] // replay prozor 8 (tolerancija reordera; dedup hvata tačne kopije)
+            // TODO: Int wrap nakon 2^31 poruka po čvoru — treba boot-epoch iz perzistencije (Faza 6+)
+            if (last != null && f.seq <= last - 8) { drops["replay"] = (drops["replay"] ?: 0) + 1; return out }
+            if (last == null || f.seq > last) lastSeq[srcHex] = f.seq
+        }
         val k = key(f.src, f.messageId)
         if (f.type == MsgType.HELLO) { // link-local: obradi, nikad ne relayuj ni isporuči aplikaciji
             if (f.ttl > 2) drops["hello-relayed"] = (drops["hello-relayed"] ?: 0) + 1
@@ -144,11 +191,16 @@ class MeshNode(
         val mine = f.dst.bytes.contentEquals(id.bytes) || f.dst.bytes.contentEquals(NodeId.BROADCAST.bytes) || isGroupMember(f.dst)
         if (!markSeen(k)) return out // duplikat: ni isporuka ni relay (idempotentnost)
         if (mine) {
-            delivered.add(f)
+            var body = f.payload
+            if (f.flags and Frame.FLAG_SEALED != 0) { // E2E: otvori; relay nema ključ pa ne može čitati
+                body = Identity.open(f.payload, identity.xPriv, f.src.bytes)
+                    ?: run { drops["sealed-fail"] = (drops["sealed-fail"] ?: 0) + 1; return out }
+            }
+            delivered.add(if (body !== f.payload) f.copy(payload = body) else f)
             if (f.flags and Frame.FLAG_ACK_REQ != 0) {
                 val ackPay = f.src.bytes + f.messageId
-                val ack = Frame(type = MsgType.ACK, messageId = Frame.randomId(rng), src = id,
-                    dst = f.src, priority = Priority.URGENT, ttl = 16, payload = ackPay)
+                val ack = signFrame(Frame(type = MsgType.ACK, messageId = Frame.randomId(rng), src = id,
+                    dst = f.src, priority = Priority.URGENT, ttl = 16, seq = ++msgSeq, payload = ackPay))
                 out.add(Tx(Frame.encode(ack), routes[hex(f.src)]?.next)) // unicast natrag naučenim putem
             }
             if (f.dst.bytes.contentEquals(id.bytes)) return out // unicast meni: ne relayaj
@@ -181,6 +233,7 @@ class MeshNode(
     fun tick(at: Long): List<Tx> {
         now = at
         val out = mutableListOf<Tx>()
+        rxCount.clear()
         // store-and-forward: flush SAMO kad se skup susjeda promijenio (merge/oporavak),
         // inače bi se store vrtio u krug svakog ticka
         val cur = HashSet(neighbors)
@@ -195,9 +248,9 @@ class MeshNode(
             val selfCoord = tracker.coord?.bytes?.contentEquals(id.bytes) == true
             val seq = if (selfCoord) ++ownSeq else tracker.coordSeq
             val h = HelloInfo(battery, charging, noRelayEff(), tracker.epoch, seq, tracker.coord)
-            out.add(Tx(Frame.encode(Frame(type = MsgType.HELLO, messageId = Frame.randomId(rng), src = id,
-                dst = NodeId.BROADCAST, priority = Priority.URGENT, ttl = 1, timestampMs = at,
-                payload = HelloInfo.encode(h))), null))
+            out.add(Tx(Frame.encode(signFrame(Frame(type = MsgType.HELLO, messageId = Frame.randomId(rng), src = id,
+                dst = NodeId.BROADCAST, priority = Priority.URGENT, ttl = 1, timestampMs = at, seq = ++msgSeq,
+                payload = HelloInfo.encode(h)))), null))
         }
         // timeout susjeda: izbaci iz neighbors + invalidiraj rute preko njih (self-healing)
         val timedOut = nbrInfo.filter { at - it.value.lastSeen > helloTimeout }.map { it.key }.toSet()

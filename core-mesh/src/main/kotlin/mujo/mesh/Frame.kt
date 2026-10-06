@@ -45,29 +45,39 @@ data class Frame(
     val flags: Int = 0,
     val fragIndex: Int = 0, // validno samo ako FRAG bit
     val fragTotal: Int = 0,
+    val seq: Int = 0, // Faza 3: monoton po originatoru, replay zaštita (prozor 8)
+    val edPub: ByteArray = ByteArray(32), // Faza 3: originatorov Ed25519 ključ (nodeId MORA = sha256(edPub))
+    val xPub: ByteArray = ByteArray(32),  // Faza 3: originatorov X25519 ključ (E2E direktorij iz overheard frameova)
     val payload: ByteArray = ByteArray(0),
+    val sig: ByteArray = ByteArray(0), // Faza 3: Ed25519 potpis nad signBytes, OBAVEZAN (prazan → drop)
 ) {
     companion object {
         const val FLAG_FRAG = 1; const val FLAG_ACK_REQ = 2; const val FLAG_COMPRESSED = 4
-        const val HEADER = 1 + 1 + 16 + 32 + 32 + 1 + 1 + 1 + 1 + 8 + 2 // 100
+        const val FLAG_SEALED = 8 // Faza 3: payload je E2E box za dst
+        const val HEADER = 1 + 1 + 16 + 32 + 32 + 32 + 32 + 1 + 1 + 1 + 1 + 8 + 4 + 2 // 164
         fun randomId(r: java.util.Random): ByteArray = ByteArray(16).also { r.nextBytes(it) }
+
+        /** Kanonski bajtovi za potpis: sve OSIM ttl/hops/sig (relay smije dirati samo ta dva). */
+        fun signBytes(f: Frame): ByteArray = encode(f.copy(ttl = 0, hopCount = 0, sig = ByteArray(0)))
 
         fun encode(f: Frame): ByteArray {
             val frag = if (f.flags and FLAG_FRAG != 0) 2 else 0
-            val b = ByteBuffer.allocate(HEADER + frag + f.payload.size)
+            val b = ByteBuffer.allocate(HEADER + frag + f.payload.size + 2 + f.sig.size)
             b.put(f.version.toByte()); b.put(f.type.toByte())
             b.put(f.messageId); b.put(f.src.bytes); b.put(f.dst.bytes)
+            b.put(f.edPub); b.put(f.xPub)
             b.put(f.priority.code.toByte()); b.put(f.ttl.toByte()); b.put(f.hopCount.toByte()); b.put(f.flags.toByte())
-            b.putLong(f.timestampMs); b.putShort(f.payload.size.toShort())
+            b.putLong(f.timestampMs); b.putInt(f.seq); b.putShort(f.payload.size.toShort())
             if (frag == 2) { b.put(f.fragIndex.toByte()); b.put(f.fragTotal.toByte()) }
             b.put(f.payload)
+            b.putShort(f.sig.size.toShort()); b.put(f.sig)
             return b.array()
         }
 
-        /** null = drop (nepoznat ver/tip/skraćen frame). Nikad ne baca. */
+        /** null = drop (nepoznat ver/tip/skraćen frame/prazan potpis). Nikad ne baca. */
         fun decode(raw: ByteArray, drops: MutableMap<String, Int>? = null): Frame? {
             fun drop(why: String): Frame? { if (drops != null) drops[why] = (drops[why] ?: 0) + 1; return null }
-            if (raw.size < HEADER) return drop("short")
+            if (raw.size < HEADER + 2) return drop("short")
             val b = ByteBuffer.wrap(raw)
             val ver = b.get().toInt() and 0xFF
             if (ver != 1) return drop("version")
@@ -75,17 +85,21 @@ data class Frame(
             if (type !in 1..6) return drop("type")
             val id = ByteArray(16); b.get(id)
             val s = ByteArray(32); b.get(s); val d = ByteArray(32); b.get(d)
+            val ep = ByteArray(32); b.get(ep); val xp = ByteArray(32); b.get(xp)
             val prio = b.get().toInt() and 0xFF
             if (prio !in 0..3) return drop("prio")
             val ttl = b.get().toInt() and 0xFF; val hops = b.get().toInt() and 0xFF; val flags = b.get().toInt() and 0xFF
-            val ts = b.long; val len = b.short.toInt() and 0xFFFF
-            var fi = 0; var ft = 0
-            if (flags and FLAG_FRAG != 0) { // Faza 1: FRAG se DROP-a (impl. tek Faza 9)
+            val ts = b.long; val sq = b.int; val len = b.short.toInt() and 0xFFFF
+            if (flags and FLAG_FRAG != 0) { // FRAG impl. tek Faza 9
                 return drop("frag-unsupported")
             }
-            if (b.remaining() < len) return drop("payload-short")
+            if (b.remaining() < len + 2) return drop("payload-short")
             val p = ByteArray(len); b.get(p)
-            return Frame(ver, type, id, NodeId(s), NodeId(d), Priority.of(prio), ttl, hops, ts, flags, fi, ft, p)
+            val sigLen = b.short.toInt() and 0xFFFF
+            if (sigLen == 0) return drop("no-sig") // Faza 3: nepotpisan frame se ne prima
+            if (b.remaining() != sigLen) return drop("sig-size")
+            val sg = ByteArray(sigLen); b.get(sg)
+            return Frame(ver, type, id, NodeId(s), NodeId(d), Priority.of(prio), ttl, hops, ts, flags, 0, 0, sq, ep, xp, p, sg)
         }
     }
     override fun equals(other: Any?) = other is Frame && version == other.version && type == other.type &&

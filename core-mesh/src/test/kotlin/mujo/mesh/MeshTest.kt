@@ -4,31 +4,41 @@ import kotlin.test.*
 
 // Fino-zrnati unit testovi (bez simulatora). Acceptance scenariji su u sim/Main.kt.
 class MeshTest {
-    private fun node(name: String) = MeshNode(NodeId.fromName(name))
+    private fun node(name: String): MeshNode {
+        val seed = java.security.MessageDigest.getInstance("SHA-256").digest(("mujo-id:" + name).toByteArray())
+        val ident = Identity.deterministic(seed)
+        return MeshNode(ident.nodeId(), identity = ident)
+    }
 
     @Test fun codecRoundtrip() {
-        val f = Frame(type = MsgType.DATA, messageId = ByteArray(16) { it.toByte() },
-            src = NodeId.fromName("A"), dst = NodeId.fromName("B"),
-            priority = Priority.URGENT, ttl = 9, payload = "abc".toByteArray())
+        val a = node("A"); val b = node("B")
+        val f = a.signFrame(Frame(type = MsgType.DATA, messageId = ByteArray(16) { it.toByte() },
+            src = a.id, dst = b.id,
+            priority = Priority.URGENT, ttl = 9, seq = 1, payload = "abc".toByteArray()))
         val rt = Frame.decode(Frame.encode(f))
-        assertNotNull(rt); assertEquals("abc", String(rt.payload)); assertEquals(9, rt.ttl)
+        assertNotNull(rt); assertEquals("abc", String(rt.payload)); assertEquals(9, rt.ttl); assertEquals(1, rt.seq)
     }
 
     @Test fun codecDrops() {
+        val a = node("A"); val b = node("B")
         val drops = mutableMapOf<String, Int>()
         assertNull(Frame.decode(byteArrayOf(1, 2), drops))
-        val badVer = Frame.encode(Frame(type = MsgType.DATA, messageId = ByteArray(16),
-            src = NodeId.fromName("A"), dst = NodeId.fromName("B"),
-            priority = Priority.NORMAL, ttl = 5)).also { it[0] = 99 }
+        val badVer = Frame.encode(a.signFrame(Frame(type = MsgType.DATA, messageId = ByteArray(16),
+            src = a.id, dst = b.id,
+            priority = Priority.NORMAL, ttl = 5, seq = 1))).also { it[0] = 99 }
         assertNull(Frame.decode(badVer, drops))
         assertTrue((drops["short"] ?: 0) > 0 && (drops["version"] ?: 0) > 0)
+        val unsigned = Frame.encode(Frame(type = MsgType.DATA, messageId = ByteArray(16),
+            src = a.id, dst = b.id, priority = Priority.NORMAL, ttl = 5, seq = 1, payload = "x".toByteArray()))
+        assertNull(Frame.decode(unsigned, drops)) // Faza 3: nepotpisan → drop
+        assertTrue((drops["no-sig"] ?: 0) > 0)
     }
 
     @Test fun idempotentDelivery() {
         val a = node("A"); val b = node("B")
         a.neighbors.add(b.id); b.neighbors.add(a.id)
-        val raw = Frame.encode(Frame(type = MsgType.DATA, messageId = ByteArray(16) { 7 },
-            src = a.id, dst = b.id, priority = Priority.NORMAL, ttl = 16, payload = "x".toByteArray()))
+        val raw = Frame.encode(a.signFrame(Frame(type = MsgType.DATA, messageId = ByteArray(16) { 7 },
+            src = a.id, dst = b.id, priority = Priority.NORMAL, ttl = 16, seq = 1, payload = "x".toByteArray())))
         b.receive(raw, a.id, 1); b.receive(raw, a.id, 2); b.receive(raw, a.id, 3)
         assertEquals(1, b.delivered.size)
     }
@@ -37,8 +47,8 @@ class MeshTest {
         val a = node("A"); val b = node("B")
         a.neighbors.add(b.id); b.neighbors.add(a.id)
         repeat(6) { i ->
-            val raw = Frame.encode(Frame(type = MsgType.SOS, messageId = ByteArray(16) { i.toByte() },
-                src = a.id, dst = NodeId.BROADCAST, priority = Priority.SOS, ttl = 16, payload = "s".toByteArray()))
+            val raw = Frame.encode(a.signFrame(Frame(type = MsgType.SOS, messageId = ByteArray(16) { i.toByte() },
+                src = a.id, dst = NodeId.BROADCAST, priority = Priority.SOS, ttl = 16, seq = i + 1, payload = "s".toByteArray())))
             b.receive(raw, a.id, i.toLong())
         }
         // 6. SOS u istom prozoru se dropa (4/60 tickova) — ali se i dalje isporučuje primaocu;
@@ -93,6 +103,25 @@ class MeshTest {
         var declared = false; for (tt in 0..30L) if (t.tick(tt)) { declared = true; break }
         assertTrue(declared); assertEquals(6, t.epoch)
         assertTrue(t.coord!!.bytes.contentEquals(a.bytes))
+    }
+    @Test fun signVerifyTamper() {
+        val a = node("A")
+        val f = a.signFrame(Frame(type = MsgType.DATA, messageId = ByteArray(16) { 1 },
+            src = a.id, dst = node("B").id, priority = Priority.NORMAL, ttl = 5, seq = 1, payload = "abc".toByteArray()))
+        assertTrue(Identity.verify(Identity.parseEdPub(f.edPub)!!, Frame.signBytes(f), f.sig))
+        val tampered = f.copy(payload = "abd".toByteArray())
+        assertFalse(Identity.verify(Identity.parseEdPub(f.edPub)!!, Frame.signBytes(tampered), f.sig))
+        val other = node("Z")
+        assertFalse(Identity.verify(other.identity.edPub, Frame.signBytes(f), f.sig))
+    }
+
+    @Test fun sealOpenWrongKey() {
+        val a = node("A"); val b = node("B"); val z = node("Z")
+        val box = Identity.seal("tajna".toByteArray(), b.identity.xPub, a.id.bytes, java.util.Random(1))
+        assertFalse(String(box).contains("tajna")) // neproziran na žici
+        assertEquals("tajna", String(Identity.open(box, b.identity.xPriv, a.id.bytes)!!))
+        assertNull(Identity.open(box, z.identity.xPriv, a.id.bytes)) // pogrešan ključ
+        assertNull(Identity.open(box, b.identity.xPriv, z.id.bytes)) // pogrešan AAD (spoof src)
     }
     @Test fun noAndroidImports() {
         // strukturni gate: core-mesh ne smije referencirati android.* (provjera i u CI greppom)
