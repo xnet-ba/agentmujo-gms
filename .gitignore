@@ -1,0 +1,19 @@
+# Gradle / Kotlin
+.gradle/
+build/
+out/
+*.jar
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.hprof
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Toolchain u /tmp (nije dio repoa)
+# kotlinc, gradle, JDK se skidaju po potrebi — vidi docs
