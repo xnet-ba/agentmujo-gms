@@ -120,6 +120,7 @@ fun main() {
     relayFail(); partitionMerge(); sosPreempt(); storm(); idem(); codec(); scale()
     coordKill(); partitionMergeCoord(); recoveryTime(); batteryGate(); batteryPrefer()
     e2eChat(); spoofDrop(); replayDrop()
+    stormLarge(); partitionFlap()
     println(if (failures == 0) "ALL PASS" else "$failures FAILURES")
     kotlin.system.exitProcess(if (failures == 0) 0 else 1)
 }
@@ -249,6 +250,35 @@ private fun replayDrop() {
     check("replay/drop", b.delivered.none { String(it.payload) == "m1-again" } &&
         b.delivered.any { String(it.payload) == "m9-late" } && (b.drops["replay"] ?: 0) == 1,
         "drops=${b.drops}")
+}
+/** Oluja na 40 čvorova: tačno-1x isporuka, bez reflooda — skala flooding granice. */
+private fun stormLarge() {
+    val s = SimNet(109); val n = 40
+    repeat(n) { s.addNode("L$it") }
+    val r = s.rng
+    repeat(140) { val a = r.nextInt(n); var b = r.nextInt(n); if (a != b) try { s.link("L$a", "L$b") } catch (_: Exception) {} }
+    repeat(n - 1) { try { s.link("L$it", "L${it + 1}") } catch (_: Exception) {} }
+    s.nodes["L0"]!!.broadcast("velika".toByteArray())
+    s.run(250)
+    val counts = (0 until n).map { s.nodes["L$it"]!!.delivered.count { String(it.payload) == "velika" } }
+    check("storm40/exactly-once", counts.all { it == 1 }, "miss=${counts.count { it == 0 }} dups=${counts.count { it > 1 }}")
+    check("storm40/no-reflood", s.nodes.values.all { it.forwarded <= 1 }, "")
+}
+
+/** Flapping particije 5x uz saobraćaj: bez duplikata i gubitaka (store-forward robustnost). */
+private fun partitionFlap() {
+    val s = SimNet(110); listOf("A", "M", "Z").forEach { s.addNode(it) }
+    s.link("A", "M"); s.link("M", "Z")
+    val a = s.nodes["A"]!!; val z = s.nodes["Z"]!!
+    repeat(5) { a.sendUnicast(s.idOf("Z"), "fl$it".toByteArray()) }
+    repeat(5) { s.cut("M", "Z"); s.run(15); s.link("M", "Z"); s.run(30) }
+    s.run(100)
+    var dups = 0; var missing = 0
+    for (i in 0..4) {
+        val c = z.delivered.count { String(it.payload) == "fl$i" }
+        if (c == 0) missing++ else if (c > 1) dups++
+    }
+    check("flap/no-loss-no-dup", missing == 0 && dups == 0, "missing=$missing dups=$dups")
 }
 /** Faza 2: greedy min-cost — A bira C (90%) preko B (10%) za rutu do D. */
 private fun batteryPrefer() {

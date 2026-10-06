@@ -6,7 +6,7 @@
 <p><b>Bez interneta. Bez mobilne mreže. Bez Google servisa. Bez servera.</b></p>
 
 ![status](https://img.shields.io/badge/faza-4a%20od%209-yellowgreen)
-![test](https://img.shields.io/badge/testovi-51%2F51-brightgreen)
+![test](https://img.shields.io/badge/testovi-55%2F55-brightgreen)
 ![kotlin](https://img.shields.io/badge/kotlin-2.0.21-blue)
 ![gms](https://img.shields.io/badge/play--services-ne_treba-red)
 ![android](https://img.shields.io/badge/android--imports_u_core--mesh-0-green)
@@ -62,7 +62,8 @@ Ova verzija je temelj za kasniji <b>AgentMujoGMS OS</b>, zato je mesh logika <b>
 <tr><td><code>gradle :service-files:test</code></td><td>3 JUnit: transfer 1:1, resume kroz gubitke, kompresija</td><td>✅ 3/3</td></tr>
 <tr><td><code>gradle :service-web:test</code></td><td>4 JUnit: status/chat/SOS endpointi, samo loopback</td><td>✅ 4/4</td></tr>
 <tr><td><code>gradle :agent:test</code></td><td>5 JUnit: profili, baterija off/on, rate limit, izolacija, rad bez agenta</td><td>✅ 5/5</td></tr>
-<tr><td><code>gradle :sim:run</code></td><td>19 determinističkih scenarija (seedovi 11–108)</td><td>✅ 19/19</td></tr>
+<tr><td><code>gradle :service-loc:test</code></td><td>2 JUnit: haversine, keš politika (stale/min-move)</td><td>✅ 2/2</td></tr>
+<tr><td><code>gradle :sim:run</code></td><td>21 deterministički scenarij (seedovi 11–110)</td><td>✅ 21/21</td></tr>
 </table>
 <p>Simulator pokriva: nestanak relaya, partition/merge (0 duplikata, 0 gubitaka), SOS preempciju (4 ticka),
 broadcast oluju (20 čvorova tačno-1x), idempotentnost, skalu (24 čvora, gubici 5%), kill koordinatora,
@@ -79,7 +80,7 @@ oporavak rute (19 tickova), battery gate/prefer, E2E bez curenja, spoof/replay d
 
 <pre>
 # potreban JDK 17+ (gradle koristi onaj koji ga pokreće)
-gradle :core-mesh:test :transport-api:test :service-chat:test :service-files:test :service-web:test :agent:test   # unit (32)
+gradle :core-mesh:test :transport-api:test :service-chat:test :service-files:test :service-web:test :service-loc:test :agent:test   # unit (34)
 gradle :sim:run                              # simulator acceptance (19 scenarija)
 gradle :transport-ble:assembleDebug :app-demo:assembleDebug  # APK (traži Android SDK, vidi docs/ANDROID_TOOLCHAIN.md)
 </pre>
