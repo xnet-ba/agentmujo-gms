@@ -3,8 +3,10 @@ package mujo.mesh
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-/** 32B node id. U Fazi 3 = javni ključ; u Fazi 1 izveden iz imena (sha256). */
-@JvmInline value class NodeId(val bytes: ByteArray) {
+/** 32B node id. U Fazi 3 = javni ključ; u Fazi 1 izveden iz imena (sha256).
+ * Namjerno content-equality (bug #5: value-class delegirao na referentni ByteArray.equals
+ * pa isti koordinator viđen od 6 čvorova izgleda kao 6 različitih). */
+class NodeId(val bytes: ByteArray) {
     init { require(bytes.size == 32) }
     companion object {
         fun fromName(name: String): NodeId {
@@ -19,6 +21,9 @@ import java.security.MessageDigest
         }
     }
     fun short(): String = bytes.take(3).joinToString("") { "%02x".format(it) }
+    override fun equals(other: Any?) = other is NodeId && bytes.contentEquals(other.bytes)
+    override fun hashCode() = bytes.contentHashCode()
+    override fun toString() = "Node(${short()})"
 }
 
 object MsgType { const val DATA = 1; const val FLOOD = 2; const val SOS = 3; const val ACK = 4; const val HELLO = 5; const val HINT = 6 }

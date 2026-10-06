@@ -116,6 +116,96 @@ private fun scale() {
 
 fun main() {
     relayFail(); partitionMerge(); sosPreempt(); storm(); idem(); codec(); scale()
+    coordKill(); partitionMergeCoord(); recoveryTime(); batteryGate(); batteryPrefer()
     println(if (failures == 0) "ALL PASS" else "$failures FAILURES")
     kotlin.system.exitProcess(if (failures == 0) 0 else 1)
+}
+
+/** Faza 2: koordinator izabran, kill → novi unutar limita, uvijek tačno 1. */
+private fun coordKill() {
+    val s = SimNet(101); val n = 6
+    repeat(n) { s.addNode("K$it") }
+    for (i in 0 until n) for (j in i + 1 until n) try { s.link("K$i", "K$j") } catch (_: Exception) {}
+    s.run(120)
+    val c0 = s.nodes.values.mapNotNull { it.tracker.coord }.mapNotNull { s.nameOf(it) }.toSet()
+    check("coord/initial-single", c0.size == 1, "c0=$c0")
+    val victim = c0.first()
+    s.kill(victim) // ubij aktuelnog koordinatora (koji god bio)
+    s.run(250)
+    val alive = s.nodes.filterKeys { it != victim }.values
+    val coords = alive.mapNotNull { it.tracker.coord }.mapNotNull { s.nameOf(it) }.toSet()
+    check("coord/kill-reelect", coords.size == 1 && victim !in coords,
+        "killed=$victim after=$coords")
+}
+
+/** Faza 2: partition → 2 koordinatora (privremeno OK), merge → opet 1, poruke bez gubitaka/duplikata. */
+private fun partitionMergeCoord() {
+    val s = SimNet(102)
+    repeat(6) { s.addNode("P$it") }
+    repeat(5) { s.link("P$it", "P${it + 1}") }
+    s.link("P0", "P2"); s.link("P3", "P5")
+    s.run(120)
+    s.cut("P2", "P3") // partition 0-2 | 3-5
+    val a = s.nodes["P0"]!!
+    repeat(3) { a.sendUnicast(s.idOf("P5"), "pm$it".toByteArray()) }
+    s.run(150) // strana B bira svog (lease istekne)
+    val duringB = s.nodes["P5"]!!.tracker.coord?.let { s.nameOf(it) }
+    s.link("P2", "P3") // merge
+    s.run(250)
+    val coords = s.nodes.values.mapNotNull { it.tracker.coord }.mapNotNull { s.nameOf(it) }.toSet()
+    var dups = 0; var missing = 0
+    for (i in 0..2) {
+        val c = s.nodes["P5"]!!.delivered.count { String(it.payload) == "pm$i" }
+        if (c == 0) missing++ else if (c > 1) dups++
+    }
+    check("coord/partition-merge", coords.size == 1 && missing == 0 && dups == 0,
+        "coords=${coords.size} duringB=$duringB missing=$missing dups=$dups")
+}
+
+/** Faza 2: utišani relay → timeout invalidira rutu, saobraćaj se vraća preko C; mjeri oporavak. */
+private fun recoveryTime() {
+    val s = SimNet(103); listOf("A", "B", "C", "D").forEach { s.addNode(it) }
+    s.link("A", "B"); s.link("B", "D"); s.link("A", "C"); s.link("C", "D")
+    val a = s.nodes["A"]!!; val d = s.nodes["D"]!!
+    a.sendUnicast(s.idOf("D"), "warm".toByteArray()); s.run(60)
+    s.quiet("B") // B ćuti ali veze stoje → timeout (ne kill)
+    var recoveredAt = -1L
+    var msgN = 0
+    repeat(150) {
+        if (it % 5 == 0) { a.sendUnicast(s.idOf("D"), "r${msgN++}".toByteArray()); }
+        s.step()
+        if (recoveredAt < 0 && d.delivered.any { String(it.payload).startsWith("r") }) recoveredAt = s.now
+    }
+    val viaB = a.routes[s.idOf("D").bytes.joinToString("") { "%02x".format(it) }]?.next
+    val viaBName = viaB?.let { s.nameOf(it) }
+    check("heal/recovery", recoveredAt >= 0 && recoveredAt - 60 <= 60 && viaBName != "B",
+        "recoveryTick=$recoveredAt via=$viaBName (očekivano ≤60 tickova od quiet)")
+}
+
+/** Faza 2: kritična baterija ne relayuje bulk, ali SOS prolazi. */
+private fun batteryGate() {
+    val s = SimNet(104); listOf("A", "B", "C").forEach { s.addNode(it) }
+    s.link("A", "B"); s.link("B", "C")
+    s.nodes["B"]!!.battery = 5
+    val a = s.nodes["A"]!!; val c = s.nodes["C"]!!; val b = s.nodes["B"]!!
+    a.sendUnicast(s.idOf("C"), "bulk-x".toByteArray())
+    a.broadcast("SOS-B".toByteArray(), sos = true)
+    s.run(150)
+    val bulkGot = c.delivered.any { String(it.payload) == "bulk-x" }
+    val sosGot = c.delivered.any { it.type == MsgType.SOS }
+    check("battery/gate", !bulkGot && sosGot && (b.drops["battery-skip"] ?: 0) > 0,
+        "bulk=$bulkGot sos=$sosGot skips=${b.drops["battery-skip"]}")
+}
+
+/** Faza 2: greedy min-cost — A bira C (90%) preko B (10%) za rutu do D. */
+private fun batteryPrefer() {
+    val s = SimNet(105); listOf("A", "B", "C", "D").forEach { s.addNode(it) }
+    s.link("A", "B"); s.link("B", "D"); s.link("A", "C"); s.link("C", "D")
+    s.nodes["B"]!!.battery = 10; s.nodes["C"]!!.battery = 90
+    s.nodes["D"]!!.broadcast("beacon".toByteArray()) // D se čuje preko oba puta
+    s.run(80)
+    val a = s.nodes["A"]!!
+    val next = a.routes[s.idOf("D").bytes.joinToString("") { "%02x".format(it) }]?.next
+    check("battery/prefer", next != null && s.nameOf(next) == "C",
+        "next=${next?.let { s.nameOf(it) }}")
 }

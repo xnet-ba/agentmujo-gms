@@ -5,8 +5,8 @@
 <h3>Offline mesh network stack za obične, nerutovane Android telefone</h3>
 <p><b>Bez interneta. Bez mobilne mreže. Bez Google servisa. Bez servera.</b></p>
 
-![status](https://img.shields.io/badge/faza-1%20od%209-green)
-![test](https://img.shields.io/badge/testovi-14%2F14-brightgreen)
+![status](https://img.shields.io/badge/faza-2%20od%209-green)
+![test](https://img.shields.io/badge/testovi-25%2F25-brightgreen)
 ![kotlin](https://img.shields.io/badge/kotlin-2.0.21-blue)
 ![gms](https://img.shields.io/badge/play--services-ne_treba-red)
 
@@ -26,7 +26,7 @@ Ova verzija je temelj za kasniji <b>AgentMujoGMS OS</b>, zato je mesh logika či
 <tr><td>6</td><td>Network API (bound service, AIDL)</td><td>⏳ Faza 6</td><td>Jedina tačka pristupa mreži za servise</td></tr>
 <tr><td>5</td><td>Role manager + Capability Probe</td><td>⏳ Faza 2/4</td><td>Uloge: Coordinator, Relay, Messenger, GPS, Gateway, Storage, Voice</td></tr>
 <tr><td>4</td><td>Security / Identity</td><td>⏳ Faza 3</td><td>libsodium/Noise, E2E + hop-by-hop, bez servera</td></tr>
-<tr><td><b>3</b></td><td><b>Mesh / Routing (čisti Kotlin)</b></td><td><b>✅ Faza 1</b></td><td><b>Flooding+dedup+TTL, unicast rute, ACK/retry, store-and-forward, prioriteti</b></td></tr>
+<tr><td><b>3</b></td><td><b>Mesh / Routing (čisti Kotlin)</b></td><td><b>✅ Faza 1–2</b></td><td><b>Flooding+dedup+TTL, unicast rute, ACK/retry, store-and-forward, prioriteti, heartbeat/timeout, lease-koordinator, battery metrika</b></td></tr>
 <tr><td>2</td><td>Link manager</td><td>⏳ Faza 5</td><td>Izbor transporta po susjedu i tipu saobraćaja</td></tr>
 <tr><td>1</td><td>Transporti (BLE, Aware, Direct, LAN)</td><td>⏳ Faza 4–5</td><td>Iza <code>LinkTransport</code> interfejsa; v1 = BLE discovery + Wi-Fi za veće podatke</td></tr>
 </table>
@@ -84,5 +84,5 @@ gradle :sim:run           # simulator acceptance
 </ul>
 
 <h2>🗺️ Faze</h2>
-<p>✅ 0 Dizajn &nbsp; ✅ 1 Simulator-osnova &nbsp; ⏳ 2 Self-healing + koordinator &nbsp; ⏳ 3 Security &nbsp; ⏳ 4 BLE+Probe &nbsp; ⏳ 5 Wi-Fi+link manager &nbsp; ⏳ 6 API+chat+SOS &nbsp; ⏳ 7 Mape/fajlovi/PTT &nbsp; ⏳ 8 Agent+profili &nbsp; ⏳ 9 HW API + OS portabilnost</p>
+<p>✅ 0 Dizajn &nbsp; ✅ 1 Simulator-osnova &nbsp; ✅ 2 Self-healing + koordinator &nbsp; ⏳ 3 Security &nbsp; ⏳ 4 BLE+Probe &nbsp; ⏳ 5 Wi-Fi+link manager &nbsp; ⏳ 6 API+chat+SOS &nbsp; ⏳ 7 Mape/fajlovi/PTT &nbsp; ⏳ 8 Agent+profili &nbsp; ⏳ 9 HW API + OS portabilnost</p>
 <p>Detalji po fazi: <a href="docs/PHASE1_REPORT.md">docs/PHASE1_REPORT.md</a> · Arhitektura: <a href="docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a> · Odluke: <a href="docs/DECISIONS.md">docs/DECISIONS.md</a></p>

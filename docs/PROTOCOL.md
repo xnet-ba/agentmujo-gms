@@ -22,6 +22,10 @@ NE koristi se za redoslijed isporuke (redoslijed = per-(src,messageId)).
 - `frag*`: prisutno samo ako FRAG=1: fragIndex(1B)+fragTotal(1B). Implementacija tek Faza 9; v1 čvor FRAG frame s nepoznatim totalom DROP-a i broji.
 - Potpis: u Fazi 1 NEMA ga na žici (frame završava payloadom). Faza 3 dodaje `sigLen(2B)+sig(var)` + replay nonce.
 - ACK: `type=0x04`, payload = acked (src,msgId), šalje se unicastom prema prethodnom hopu (path-learning unatrag).
+- HELLO: `type=0x05`, **ttl=1, link-local, nikad se ne relayuje**, dst=BROADCAST, prioritet URGENT.
+  Payload 42B: batt(1B, 0–100) | flags(1B: bit0 charging, bit1 noRelay) | epoch(4B BE) |
+  coordSeq(4B BE, napreduje samo kod koordinatora — liveness) | coordId(32B, nule = nijedan).
+  Malformiran HELLO → drop + brojač, ne ruši čvor. (Faza 2)
 - Rate limit protiv zloupotrebe prioriteta: max 4 SOS/min po src (Faza 1: broji + dropa višak; prag NEVALIDIRAN).
 
 Ograničenja v1: metapodaci (src/dst/hops) vidljivi relayu; nema povjerljivosti do Faze 3.

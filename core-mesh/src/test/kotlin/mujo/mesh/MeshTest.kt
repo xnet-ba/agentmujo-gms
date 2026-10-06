@@ -47,6 +47,53 @@ class MeshTest {
         assertEquals(2, b.drops["sos-ratelimit"] ?: 0)
     }
 
+    @Test fun helloRoundtrip() {
+        val h = HelloInfo(73, true, false, 4, 9, NodeId.fromName("C"))
+        val rt = HelloInfo.decode(HelloInfo.encode(h))
+        assertNotNull(rt); assertEquals(73, rt.battery); assertTrue(rt.charging)
+        assertEquals(4, rt.epoch); assertEquals(9, rt.coordSeq)
+        assertTrue(rt.coordId!!.bytes.contentEquals(NodeId.fromName("C").bytes))
+        assertNull(HelloInfo.decode(ByteArray(5)))
+    }
+
+    @Test fun leaseSingleAndTiebreak() {
+        val a = NodeId.fromName("A"); val b = NodeId.fromName("B")
+        val ta = LeaseTracker(a, leaseTimeout = 60); val tb = LeaseTracker(b, leaseTimeout = 60)
+        var ta0 = 0L; while (!ta.tick(ta0) && ta0 < 20) ta0++ // niko: A se proglašava (uz jitter)
+        assertNotNull(ta.coord)
+        var t = 0L; while (tb.coord == null && t < 20) { tb.tick(t); t++ }
+        // B čuje A (epoch viši) → usvaja
+        tb.onHello(a, ta.epoch, 1, t)
+        assertTrue(tb.coord!!.bytes.contentEquals(a.bytes))
+        // ista epoha, manji id pobjeđuje nad već upisanim većim
+        tb.onHello(b, ta.epoch, 1, t)
+        assertTrue(tb.coord!!.bytes.contentEquals(a.bytes))
+    }
+
+    @Test fun leaseStaleCopyExpires() {
+        val a = NodeId.fromName("A"); val z = NodeId.fromName("Z")
+        val t = LeaseTracker(a, leaseTimeout = 10)
+        t.onHello(z, 3, 7, 0) // svježe: seq 7
+        t.onHello(z, 3, 7, 5) // ustajala kopija (isti seq): NE osvježava
+        var declared = false
+        for (tt in 0..30L) if (t.tick(tt)) { declared = true; break }
+        assertTrue(declared, "lease mora isteći kad seq ne napreduje")
+        val t2 = LeaseTracker(a, leaseTimeout = 10)
+        t2.onHello(z, 3, 7, 0)
+        t2.onHello(z, 3, 9, 5) // seq napredovao → osvježava
+        var declared2 = false
+        for (tt in 0..12L) if (t2.tick(tt)) { declared2 = true; break }
+        assertFalse(declared2, "svjež seq drži lease živim")
+    }
+
+    @Test fun leaseExpiryRedeclares() {
+        val a = NodeId.fromName("A")
+        val t = LeaseTracker(a, leaseTimeout = 10)
+        t.onHello(NodeId.fromName("Z"), 5, 1, 0)
+        var declared = false; for (tt in 0..30L) if (t.tick(tt)) { declared = true; break }
+        assertTrue(declared); assertEquals(6, t.epoch)
+        assertTrue(t.coord!!.bytes.contentEquals(a.bytes))
+    }
     @Test fun noAndroidImports() {
         // strukturni gate: core-mesh ne smije referencirati android.* (provjera i u CI greppom)
         val src = java.io.File("src/main/kotlin").walkTopDown().filter { it.isFile }

@@ -15,6 +15,7 @@ class SimNet(seed: Long) {
     var now: Long = 0
     var txTotal = 0
     val dead = mutableSetOf<String>()
+    val quiet = mutableSetOf<String>() // veze ostaju, čvor ne ticka/ne prima (utišani relay za timeout test)
 
     fun addNode(name: String): MeshNode {
         val n = MeshNode(NodeId.fromName(name), rng = Random(rng.nextLong()))
@@ -23,10 +24,17 @@ class SimNet(seed: Long) {
     fun link(a: String, b: String, loss: Double = 0.0, latency: Int = 1) {
         links[minOf(a, b) to maxOf(a, b)] = Link(loss, latency)
         nodes[a]!!.neighbors.add(nodes[b]!!.id); nodes[b]!!.neighbors.add(nodes[a]!!.id)
+        // trošak linka vidljiv mesh sloju (isti kanonski instancei kao u neighbors)
+        nodes[a]!!.linkLoss[hex(nodes[b]!!.id)] = loss
+        nodes[b]!!.linkLoss[hex(nodes[a]!!.id)] = loss
     }
+    private fun hex(n: mujo.mesh.NodeId) = n.bytes.joinToString("") { "%02x".format(it) }
+    fun quiet(name: String) { quiet.add(name) }
+    fun unquiet(name: String) { quiet.remove(name) }
     fun cut(a: String, b: String) {
         links.remove(minOf(a, b) to maxOf(a, b))
         nodes[a]?.neighbors?.remove(nodes[b]?.id); nodes[b]?.neighbors?.remove(nodes[a]?.id)
+        nodes[a]?.linkLoss?.remove(hex(nodes[b]!!.id)); nodes[b]?.linkLoss?.remove(hex(nodes[a]!!.id))
     }
     fun kill(name: String) { dead.add(name); links.keys.filter { it.first == name || it.second == name }.toList().forEach { links.remove(it) }; nodes.values.forEach { it.neighbors.remove(nodes[name]!!.id) }; nodes[name]!!.neighbors.clear() }
     fun revive(name: String, to: List<String>) { dead.remove(name); to.forEach { link(name, it) } }
@@ -50,13 +58,13 @@ class SimNet(seed: Long) {
 
     fun step() {
         for ((name, n) in nodes) {
-            if (name in dead) continue
+            if (name in dead || name in quiet) continue
             for (tx in n.tick(now)) transmit(name, tx)
         }
         val due = inflight.filter { it.at <= now }.toList()
         inflight.removeAll(due.toSet())
         for (d in due) {
-            if (d.to in dead) continue
+            if (d.to in dead || d.to in quiet) continue
             // receive() može vratiti izravne Tx (npr. ACK): oni MORAJU u mrežu istim putem
             for (tx in nodes[d.to]!!.receive(d.bytes, d.from, now)) {
                 val fromName = d.to
