@@ -4,6 +4,7 @@ build/
 out/
 *.jar
 *.class
+local.properties
 
 # IDE
 .idea/

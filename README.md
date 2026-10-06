@@ -31,7 +31,7 @@ Ova verzija je temelj za kasniji <b>AgentMujoGMS OS</b>, zato je mesh logika <b>
 <tr><td>4</td><td>Security / Identity</td><td>✅ Faza 3</td><td>Ed25519 potpis, E2E box, replay vrata — pure-JDK, bez servera</td></tr>
 <tr><td><b>3</b></td><td><b>Mesh / Routing (čisti Kotlin)</b></td><td><b>✅ Faza 1–2</b></td><td><b>Flooding+dedup+TTL, unicast rute, ACK/retry, store-and-forward, prioriteti, heartbeat/timeout, lease-koordinator, battery metrika</b></td></tr>
 <tr><td>2</td><td>Link manager</td><td>🔶 jezgro gotovo (PC)</td><td>Izbor transporta po klasi saobraćaja + fallback; mjerenje na uređajima čeka hardver</td></tr>
-<tr><td>1</td><td>Transporti (BLE, Aware, Direct, LAN)</td><td>🔶 API gotov</td><td>Iza <code>LinkTransport</code> interfejsa; v1 = BLE discovery + Wi-Fi za veće podatke</td></tr>
+<tr><td>1</td><td>Transporti (BLE, Aware, Direct, LAN)</td><td>🔶 BLE se kompajlira + demo APK</td><td><code>BleTransport</code> iza <code>LinkTransport</code>; ponašanje na uređaju NETESTIRANO (čeka hardver)</td></tr>
 </table>
 </details>
 
