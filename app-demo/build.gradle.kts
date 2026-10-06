@@ -10,5 +10,6 @@ dependencies {
     implementation(project(":core-mesh"))
     implementation(project(":transport-api"))
     implementation(project(":transport-ble"))
+    implementation(project(":network-api"))
     implementation("androidx.core:core:1.13.1")
 }

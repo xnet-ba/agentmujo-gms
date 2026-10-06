@@ -49,6 +49,15 @@ class Identity(
                 java.security.spec.X509EncodedKeySpec(prefix + raw32))
         } catch (_: Exception) { null }
 
+        /** Produkcioni identitet (SecureRandom). Deterministički samo za sim/testove. */
+        fun random(): Identity {
+            val eg = KeyPairGenerator.getInstance("Ed25519").also { it.initialize(NamedParameterSpec.ED25519) }
+            val e = eg.generateKeyPair()
+            val xg = KeyPairGenerator.getInstance("X25519").also { it.initialize(NamedParameterSpec.X25519) }
+            val x = xg.generateKeyPair()
+            return Identity(e.private, e.public, x.private, x.public)
+        }
+
         /** Deterministički identitet iz 32B sjemena (za simulator; produkcija koristi SecureRandom). */
         fun deterministic(seed32: ByteArray): Identity {
             require(seed32.size == 32)

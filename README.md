@@ -26,7 +26,7 @@ Ova verzija je temelj za kasniji <b>AgentMujoGMS OS</b>, zato je mesh logika <b>
 <table>
 <tr><th>Sloj</th><th>Naziv</th><th>Status</th><th>Opis</th></tr>
 <tr><td>7</td><td>Servisi (chat, SOS, mapa, PTT, fajlovi)</td><td>🔶 chat+SOS+fajlovi jezgro (PC)</td><td>Grupni chat, SOS s potvrdama, file transfer s resumeom; Android UI kasnije; nikad direktno na transport</td></tr>
-<tr><td>6</td><td>Network API (bound service, AIDL)</td><td>⏳ Faza 6</td><td>Jedina tačka pristupa mreži za servise</td></tr>
+<tr><td>6</td><td>Network API (bound service, AIDL)</td><td>🔶 AIDL + servis se kompajlira</td><td><code>IMujoMesh</code>: status/chat/SOS/poll; vezivanje na uređaju NETESTIRANO</td></tr>
 <tr><td>5</td><td>Role manager + Capability Probe</td><td>🔶 model gotov</td><td>Uloge: Coordinator, Relay, Messenger, GPS, Gateway, Storage, Voice</td></tr>
 <tr><td>4</td><td>Security / Identity</td><td>✅ Faza 3</td><td>Ed25519 potpis, E2E box, replay vrata — pure-JDK, bez servera</td></tr>
 <tr><td><b>3</b></td><td><b>Mesh / Routing (čisti Kotlin)</b></td><td><b>✅ Faza 1–2</b></td><td><b>Flooding+dedup+TTL, unicast rute, ACK/retry, store-and-forward, prioriteti, heartbeat/timeout, lease-koordinator, battery metrika</b></td></tr>

@@ -13,5 +13,7 @@
         <service android:name=".MeshService"
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
+        <service android:name="mujo.net.MeshBinderService"
+            android:exported="false" />
     </application>
 </manifest>
