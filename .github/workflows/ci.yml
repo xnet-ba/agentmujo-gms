@@ -27,6 +27,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      - name: SDK packages (runner već ima SDK; setup-android@v3 je pokvaren — traži nepostojeći paket tools)
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
       - name: APK compile (bez uređaja)
-        uses: android-actions/setup-android@v3
-      - run: gradle :transport-ble:assembleDebug :network-api:assembleDebug :app-demo:assembleDebug
+        run: gradle :transport-ble:assembleDebug :network-api:assembleDebug :app-demo:assembleDebug
