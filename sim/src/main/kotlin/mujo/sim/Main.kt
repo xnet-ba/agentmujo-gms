@@ -120,7 +120,7 @@ fun main() {
     relayFail(); partitionMerge(); sosPreempt(); storm(); idem(); codec(); scale()
     coordKill(); partitionMergeCoord(); recoveryTime(); batteryGate(); batteryPrefer()
     e2eChat(); spoofDrop(); replayDrop()
-    stormLarge(); partitionFlap()
+    stormLarge(); partitionFlap(); randomSweep()
     println(if (failures == 0) "ALL PASS" else "$failures FAILURES")
     kotlin.system.exitProcess(if (failures == 0) 0 else 1)
 }
@@ -279,6 +279,40 @@ private fun partitionFlap() {
         if (c == 0) missing++ else if (c > 1) dups++
     }
     check("flap/no-loss-no-dup", missing == 0 && dups == 0, "missing=$missing dups=$dups")
+}
+/** Diferencijalni sweep: 30 nasumičnih topologija; invarijante: (1) povezan par → tačno 1x isporuka,
+ * (2) NIJEDAN čvor NIKAD ne isporuči isti (src,msgId) dvaput (globalna idempotentnost). Bez gubitaka linkova. */
+private fun randomSweep() {
+    var miss = 0; var dups = 0; var total = 0
+    repeat(30) { iter ->
+        val s = SimNet(1000L + iter); val n = 5 + s.rng.nextInt(8) // 5..12 čvorova
+        repeat(n) { s.addNode("R$it") }
+        repeat(n - 1) { s.link("R$it", "R${it + 1}") } // kičma = povezanost zagarantovana
+        repeat(n * 2) { val a = s.rng.nextInt(n); var b = s.rng.nextInt(n); if (a != b) try { s.link("R$a", "R$b") } catch (_: Exception) {} }
+        // BFS komponente iz links (links je neusmjeren skup parova)
+        fun neighborsOf(x: String) = s.links.keys.flatMap { (p, q) -> if (p == x) listOf(q) else if (q == x) listOf(p) else emptyList() }.toSet()
+        val pairs = mutableListOf<Pair<String, String>>()
+        for (a in 0 until n) for (b in 0 until n) {
+            if (a == b) continue
+            val seen = mutableSetOf("R$a"); val q = ArrayDeque(listOf("R$a"))
+            while (q.isNotEmpty()) { for (m in neighborsOf(q.removeFirst())) if (seen.add(m)) q.add(m) }
+            if ("R$b" in seen && pairs.size < 6 && s.rng.nextBoolean()) pairs.add("R$a" to "R$b")
+        }
+        val tags = pairs.mapIndexed { i, (a, b) -> Triple(a, b, "sw$iter-$i") }
+        tags.forEach { (a, b, t) -> s.nodes[a]!!.sendUnicast(s.idOf(b), t.toByteArray()) }
+        s.run(300)
+        total += tags.size
+        tags.forEach { (_, b, t) ->
+            val c = s.nodes[b]!!.delivered.count { String(it.payload) == t }
+            if (c == 0) miss++ else if (c > 1) dups++
+        }
+        // globalna idempotentnost: svaki čvor, svaki ključ max 1x
+        s.nodes.values.forEach { nd ->
+            val groups = nd.delivered.groupBy { it.src.bytes.joinToString("") { b -> "%02x".format(b) } + it.messageId.joinToString("") { b -> "%02x".format(b) } }
+            if (groups.values.any { it.size > 1 }) dups++
+        }
+    }
+    check("sweep/exactly-once", miss == 0 && dups == 0, "total=$total missing=$miss dups=$dups")
 }
 /** Faza 2: greedy min-cost — A bira C (90%) preko B (10%) za rutu do D. */
 private fun batteryPrefer() {

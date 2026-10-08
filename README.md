@@ -7,7 +7,7 @@
 
 ![status](https://img.shields.io/badge/faza-4a%20od%209-yellowgreen)
 ![ci](https://github.com/xnet-ba/agentmujo-gms/actions/workflows/ci.yml/badge.svg)
-![test](https://img.shields.io/badge/testovi-55%2F55-brightgreen)
+![test](https://img.shields.io/badge/testovi-56%2F56-brightgreen)
 ![kotlin](https://img.shields.io/badge/kotlin-2.0.21-blue)
 ![gms](https://img.shields.io/badge/play--services-ne_treba-red)
 ![android](https://img.shields.io/badge/android--imports_u_core--mesh-0-green)
