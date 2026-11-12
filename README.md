@@ -1,3 +1,19 @@
+<!-- xnet-ba-matrix-header-v1 -->
+<div align="center">
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=00FF41&height=140&section=header&text=agentmujo-gms&fontColor=000000&fontSize=42&fontAlignY=32&desc=open-source%20AI%20iz%20BiH&descAlignY=55" width="100%" alt="agentmujo-gms"/>
+
+[![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&size=16&duration=2800&pause=800&color=00FF41&center=true&vCenter=true&width=700&lines=xnet-ba+%3A%3A+open-source+AI+iz+BiH;citaj+README+pa+pokreni;PR+dobrodosli)](https://github.com/xnet-ba/agentmujo-gms)
+
+[![Stars](https://img.shields.io/github/stars/xnet-ba/agentmujo-gms?style=flat-square&color=00FF41&labelColor=000000)](https://github.com/xnet-ba/agentmujo-gms/stargazers)
+[![License](https://img.shields.io/github/license/xnet-ba/agentmujo-gms?style=flat-square&color=00FF41&labelColor=000000)](LICENSE)
+[![Top lang](https://img.shields.io/github/languages/top/xnet-ba/agentmujo-gms?style=flat-square&color=00FF41&labelColor=000000)](https://github.com/xnet-ba/agentmujo-gms)
+[![Last commit](https://img.shields.io/github/last-commit/xnet-ba/agentmujo-gms?style=flat-square&color=00FF41&labelColor=000000)](https://github.com/xnet-ba/agentmujo-gms/commits)
+[![matrix](https://img.shields.io/badge/MATRIX-xnet--ba-00FF41?style=flat-square&labelColor=000000)](https://github.com/xnet-ba)
+
+</div>
+
+---
 <div align="center">
 
 # 📡 AgentMujoGMS v1
@@ -94,3 +110,10 @@ gradle :transport-ble:assembleDebug :app-demo:assembleDebug  # APK (traži Andro
 <li>Metapodaci vidljivi relayu; prva poruka u smjeru plaintext; TOFU bez verifikacije — <b>ne tvrdimo da je sistem siguran</b> (vidi THREAT_MODEL.md)</li>
 <li>Mreža u v1 je realno "BLE discovery + Wi-Fi za veće podatke", ne idealan mesh; Android kripto API nivoi neprovjereni</li>
 </ul>
+
+---
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/xnet-ba/xnet-ba/main/assets/divider.svg" width="100%" alt=""/>
+<sup>part of <a href="https://github.com/xnet-ba">xnet-ba matrix</a> — open-source AI iz BiH</sup>
+</div>
