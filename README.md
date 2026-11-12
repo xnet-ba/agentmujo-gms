@@ -1,7 +1,7 @@
 <!-- xnet-ba-matrix-header-v1 -->
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=00FF41&height=140&section=header&text=agentmujo-gms&fontColor=000000&fontSize=42&fontAlignY=32&desc=open-source%20AI%20iz%20BiH&descAlignY=55" width="100%" alt="agentmujo-gms"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=00FF41&height=140&section=header&text=agentmujo-gms&fontColor=000000&fontSize=42&fontAlignY=32&desc=Mesh%20mreza%20Androida%3A%20offline%20chat%2C%20SOS%2C%20fajlovi%20%28Kotlin%29&descAlignY=55" width="100%" alt="agentmujo-gms"/>
 
 [![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&size=16&duration=2800&pause=800&color=00FF41&center=true&vCenter=true&width=700&lines=xnet-ba+%3A%3A+open-source+AI+iz+BiH;citaj+README+pa+pokreni;PR+dobrodosli)](https://github.com/xnet-ba/agentmujo-gms)
 
